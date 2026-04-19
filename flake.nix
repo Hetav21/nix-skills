@@ -9,5 +9,6 @@
     lib = nixpkgs.lib;
   in {
     lib = import ./lib { inherit lib; };
+    homeManagerModules.default = ./module.nix;
   };
 }

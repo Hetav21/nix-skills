@@ -132,12 +132,12 @@
 
     flattenedSkills = map (s: flattenSkills pkgs s) resolvedSkills;
 
-    skillsMerged = merge pkgs "claude-skills" flattenedSkills;
-    agentsMerged = merge pkgs "claude-agents" resolvedAgents;
-    commandsMerged = merge pkgs "claude-commands" resolvedCommands;
-    hooksMerged = merge pkgs "claude-hooks" resolvedHooks;
+    skillsMerged = merge pkgs "agents-skills" flattenedSkills;
+    agentsMerged = merge pkgs "agents-agents" resolvedAgents;
+    commandsMerged = merge pkgs "agents-commands" resolvedCommands;
+    hooksMerged = merge pkgs "agents-hooks" resolvedHooks;
   in
-    pkgs.runCommand "claude-assets" {} ''
+    pkgs.runCommand "agents-assets" {} ''
       mkdir -p $out/skills $out/agents $out/commands $out/hooks
 
       echo "Copying skills..."
@@ -169,14 +169,14 @@
           (args.shellHook or "")
           + ''
 
-            # Claude Project Bootstrap
-            mkdir -p .claude
-            cp -rn ${assets}/* ./.claude/
-            chmod -R u+w ./.claude
+            # Agents Project Bootstrap
+            mkdir -p .agents
+            cp -rn ${assets}/* ./.agents/
+            chmod -R u+w ./.agents
           '';
       });
 
-  # Creates the ~/.claude environment by merging sources
+  # Creates the ~/.agents environment by merging sources
   mkEnvironment = pkgs: {
     inputs ? null,
     skills ? [],
@@ -186,9 +186,9 @@
   }: let
     assets = buildAssets {inherit pkgs inputs skills agents commands hooks;};
   in {
-    ".claude/skills".source = "${assets}/skills";
-    ".claude/commands".source = "${assets}/commands";
-    ".claude/agents".source = "${assets}/agents";
-    ".claude/hooks".source = "${assets}/hooks";
+    ".agents/skills".source = "${assets}/skills";
+    ".agents/commands".source = "${assets}/commands";
+    ".agents/agents".source = "${assets}/agents";
+    ".agents/hooks".source = "${assets}/hooks";
   };
 }
