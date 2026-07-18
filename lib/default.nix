@@ -176,6 +176,22 @@
           '';
       });
 
+  # Converts an opencode-style `mcpServers` attrset to a Claude Code compatible one.
+  # Claude Code requires an explicit "type" ("http" / "sse" / "ws") on remote servers,
+  # while opencode uses "remote" or infers the transport from the presence of "url".
+  # Usage: toClaudeMcpServers (lib.importJSON ./mcp.json).mcpServers
+  toClaudeMcpServers = mcpServers: let
+    toClaudeServer = server:
+      if server ? command
+      then server
+      else if (server.type or null) == "remote"
+      then (removeAttrs server ["type"]) // {type = "http";}
+      else if server ? url && !(server ? type)
+      then server // {type = "http";}
+      else server;
+  in
+    lib.mapAttrs (_: toClaudeServer) mcpServers;
+
   # Creates the ~/.agents environment by merging sources
   mkEnvironment = pkgs: {
     inputs ? null,
