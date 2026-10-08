@@ -86,6 +86,11 @@
            flat_name="$skill_name"
         fi
 
+        if [ -e "$out/$flat_name" ]; then
+          echo "error: duplicate skill name '$flat_name' in ${src} ($skill_dir)" >&2
+          exit 1
+        fi
+
         echo "Flattening: $skill_dir -> $flat_name"
         mkdir -p "$out/$flat_name"
         rsync -a --copy-links "$skill_dir/" "$out/$flat_name/"
