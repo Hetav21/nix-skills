@@ -72,25 +72,21 @@
     '';
 
   # Flattens a directory of skills based on SKILL.md presence
-  # Recursively finds directories containing SKILL.md and moves them to root with flattened names (path/to/skill -> path-to-skill)
+  # Recursively finds directories containing SKILL.md and moves them to root with skill directory basenames
   flattenSkills = pkgs: src:
     pkgs.runCommand "flatten-skills" {nativeBuildInputs = [pkgs.rsync];} ''
       mkdir -p $out
 
       # Find directories containing SKILL.md, excluding hidden directories
       find "${src}" -name "SKILL.md" -not -path '*/.*' -printf "%h\n" | sort -u | while read -r skill_dir; do
-        # Calculate relative path
-        rel_path="''${skill_dir#${src}}"
-        rel_path="''${rel_path#/}" # Remove leading slash
-
-        if [ -z "$rel_path" ]; then
+        skill_name="$(basename "$skill_dir")"
+        if [ "$skill_dir" = "${src}" ] || [ -z "$skill_name" ]; then
            flat_name="root"
         else
-           # Replace / with -
-           flat_name="''${rel_path//\//-}"
+           flat_name="$skill_name"
         fi
 
-        echo "Flattening: $rel_path -> $flat_name"
+        echo "Flattening: $skill_dir -> $flat_name"
         mkdir -p "$out/$flat_name"
         rsync -a --copy-links "$skill_dir/" "$out/$flat_name/"
       done
@@ -192,19 +188,64 @@
   in
     lib.mapAttrs (_: toClaudeServer) mcpServers;
 
-  # Creates the ~/.agents environment by merging sources
+  # Creates agent environments across target directories
   mkEnvironment = pkgs: {
     inputs ? null,
     skills ? [],
     commands ? [],
     agents ? [],
     hooks ? [],
+    targets ? {
+      agents = true;
+      claude = true;
+      codex = true;
+      gemini = true;
+    },
   }: let
     assets = buildAssets {inherit pkgs inputs skills agents commands hooks;};
-  in {
-    ".agents/skills".source = "${assets}/skills";
-    ".agents/commands".source = "${assets}/commands";
-    ".agents/agents".source = "${assets}/agents";
-    ".agents/hooks".source = "${assets}/hooks";
-  };
+    activeTargets = {
+      agents = targets.agents or true;
+      claude = targets.claude or true;
+      codex = targets.codex or true;
+      gemini = targets.gemini or true;
+    };
+  in
+    lib.mkMerge [
+      (lib.mkIf activeTargets.agents {
+        ".agents/skills" = {
+          source = "${assets}/skills";
+          recursive = true;
+        };
+        ".agents/commands" = {
+          source = "${assets}/commands";
+          recursive = true;
+        };
+        ".agents/agents" = {
+          source = "${assets}/agents";
+          recursive = true;
+        };
+        ".agents/hooks" = {
+          source = "${assets}/hooks";
+          recursive = true;
+        };
+      })
+      (lib.mkIf activeTargets.claude {
+        ".claude/skills" = {
+          source = "${assets}/skills";
+          recursive = true;
+        };
+      })
+      (lib.mkIf activeTargets.codex {
+        ".codex/skills" = {
+          source = "${assets}/skills";
+          recursive = true;
+        };
+      })
+      (lib.mkIf activeTargets.gemini {
+        ".gemini/skills" = {
+          source = "${assets}/skills";
+          recursive = true;
+        };
+      })
+    ];
 }
