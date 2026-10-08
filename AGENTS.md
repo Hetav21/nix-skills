@@ -6,12 +6,13 @@
 
 When activated, `nix-skills` manages skills across the supported agent targets:
 
-| Path                  | Agent Target                  | Description                          | Strategy                              |
-| --------------------- | ----------------------------- | ------------------------------------ | ------------------------------------- |
-| `~/.agents/skills/`   | OpenCode / Universal (`agents`) | Skill definitions (`skill/SKILL.md`) | Flattened merge (recursive symlinks)  |
-| `~/.claude/skills/`   | Claude Code (`claude`)        | Skill definitions (`skill/SKILL.md`) | Flattened merge (recursive symlinks)  |
-| `~/.codex/skills/`    | OpenAI Codex (`codex`)        | Skill definitions (`skill/SKILL.md`) | Flattened merge (recursive symlinks)  |
-| `~/.gemini/skills/`   | Antigravity (`gemini`)        | Skill definitions (`skill/SKILL.md`) | Flattened merge (recursive symlinks)  |
+| Path                                  | Agent Target                         | Description                          | Strategy                             |
+| ------------------------------------- | ------------------------------------ | ------------------------------------ | ------------------------------------ |
+| `~/.agents/skills/`                   | OpenCode / Universal (`agents`)        | Skill definitions (`skill/SKILL.md`) | Flattened merge (recursive symlinks) |
+| `~/.claude/skills/`                   | Claude Code (`claude`)               | Skill definitions (`skill/SKILL.md`) | Flattened merge (recursive symlinks) |
+| `~/.codex/skills/`                    | OpenAI Codex (`codex`)               | Skill definitions (`skill/SKILL.md`) | Flattened merge (recursive symlinks) |
+| `~/.gemini/skills/`                   | Gemini CLI & Antigravity (`gemini`)  | Skill definitions (`skill/SKILL.md`) | Flattened merge (recursive symlinks) |
+| `~/.gemini/antigravity-cli/skills/`   | Antigravity CLI (`agy`)              | Skill definitions (`skill/SKILL.md`) | Flattened merge (recursive symlinks) |
 
 All targets use `recursive = true` so individual skills are symlinked without overwriting runtime data (such as Codex's `.system` folder or unmanaged local skills).
 
@@ -46,7 +47,7 @@ programs.agent-skills = {
     agents = true;  # ~/.agents/skills
     claude = true;  # ~/.claude/skills
     codex = true;   # ~/.codex/skills
-    gemini = true;  # ~/.gemini/skills
+    gemini = true;  # ~/.gemini/skills and ~/.gemini/antigravity-cli/skills
   };
 
   # Declarative skill sources

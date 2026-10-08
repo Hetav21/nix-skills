@@ -178,6 +178,10 @@
           source = "${skillsPkg}";
           recursive = true;
         };
+        ".gemini/antigravity-cli/skills" = {
+          source = "${skillsPkg}";
+          recursive = true;
+        };
       })
     ];
 
@@ -193,7 +197,18 @@
   toClaudeMcpServers = mcpServers: let
     toClaudeServer = server:
       if server ? command
-      then server
+      then let
+        cmd = server.command;
+        isList = builtins.isList cmd;
+        base = removeAttrs server ["type" "command" "environment"];
+      in
+        base
+        // {
+          type = "stdio";
+          command = if isList then builtins.head cmd else cmd;
+          args = (if isList then builtins.tail cmd else []) ++ (server.args or []);
+        }
+        // lib.optionalAttrs (server ? environment) {env = server.environment;}
       else if (server.type or null) == "remote"
       then (removeAttrs server ["type"]) // {type = "http";}
       else if server ? url && !(server ? type)
