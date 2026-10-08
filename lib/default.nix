@@ -1,39 +1,6 @@
 {lib, ...}: rec {
-  parseGithubUrl = url: let
-    # Regex to match: https://github.com/Owner/Repo/blob/Ref/Path/To/File
-    match = builtins.match "https?://github.com/([^/]+)/([^/]+)/(blob|tree)/([^/]+)/(.*)" url;
-  in
-    if match == null
-    then null
-    else {
-      owner = builtins.elemAt match 0;
-      repo = builtins.elemAt match 1;
-      type = builtins.elemAt match 2; # blob or tree
-      ref = builtins.elemAt match 3;
-      path = builtins.elemAt match 4;
-    };
-
-  resolveSource = pkgs: inputs: urlStr: let
-    parsed = parseGithubUrl urlStr;
-  in
-    if parsed == null
-    then throw "Invalid GitHub URL: ${urlStr}"
-    else let
-      # Try to find input by Repo name first, then Owner-Repo
-      inputName =
-        if inputs ? "${parsed.repo}"
-        then parsed.repo
-        else if inputs ? "${parsed.owner}-${parsed.repo}"
-        then "${parsed.owner}-${parsed.repo}"
-        else throw "Input not found for ${parsed.owner}/${parsed.repo}. Checked '${parsed.repo}' and '${parsed.owner}-${parsed.repo}'. Please add it to your flake inputs: `inputs.${parsed.repo}.url = \"github:${parsed.owner}/${parsed.repo}\";`";
-
-      src = inputs.${inputName};
-    in
-      extract pkgs src parsed.path {};
-
-  # Helper to extract a subdirectory from a package with filtering
-  # Usage: extract pkgs source "subdirectory" { includes = ["*"]; excludes = []; }
-  extract = pkgs: src: path: {
+  # Internal extraction worker with include/exclude filters
+  extractInternal = pkgs: src: path: {
     includes ? [],
     excludes ? [],
   } @ args: let
@@ -59,20 +26,39 @@
         else []
       );
     argsStr = builtins.concatStringsSep " " finalArgs;
+    safePathName = builtins.replaceStrings ["/"] ["-"] path;
   in
-    pkgs.runCommand "extract-${builtins.replaceStrings ["/"] ["-"] path}" {nativeBuildInputs = [pkgs.rsync];} ''
+    pkgs.runCommand "extract-${safePathName}" {nativeBuildInputs = [pkgs.rsync];} ''
       mkdir -p $out
       if [ -d "${src}/${path}" ]; then
         rsync -av --copy-links ${argsStr} "${src}/${path}/" "$out/"
       elif [ -f "${src}/${path}" ]; then
         cp -a "${src}/${path}" "$out/"
+      elif [ -d "${src}" ] && [ "${path}" = "" -o "${path}" = "." ]; then
+        rsync -av --copy-links ${argsStr} "${src}/" "$out/"
       else
         echo "Warning: ${path} not found in ${src}"
       fi
     '';
 
-  # Flattens a directory of skills based on SKILL.md presence
-  # Recursively finds directories containing SKILL.md and moves them to root with skill directory basenames
+  # Extract a subdirectory or filtered subset from a package.
+  # Polymorphic usage:
+  #   extract pkgs src "skills" { includes = ["..."]; }       (positional / legacy)
+  #   extract pkgs { source = src; includes = ["..."]; }       (attrset)
+  extract = pkgs: a:
+    if builtins.isAttrs a && !(a ? type && a.type == "derivation") && (a ? source)
+    then
+      extractInternal pkgs a.source (a.path or "skills") {
+        includes = a.includes or [];
+        excludes = a.excludes or [];
+      }
+    else
+      path: args:
+        extractInternal pkgs a path args;
+
+  # Flattens a directory of skills based on SKILL.md presence.
+  # Recursively finds directories containing SKILL.md and moves them to root
+  # with skill directory basenames. Excludes hidden directories.
   flattenSkills = pkgs: src:
     pkgs.runCommand "flatten-skills" {nativeBuildInputs = [pkgs.rsync];} ''
       mkdir -p $out
@@ -97,7 +83,7 @@
       done
     '';
 
-  # Helper to merge directories with priority (Last item in list = Highest Priority)
+  # Helper to merge directories with priority (later item in list = higher priority)
   merge = pkgs: name: paths:
     pkgs.runCommand name {} ''
       mkdir -p $out
@@ -113,74 +99,97 @@
         paths}
     '';
 
+  # Builds a consolidated skills directory from a list of skill packages or specs.
+  # Each entry can be:
+  #   - A package / derivation: auto-flattened recursively by finding SKILL.md
+  #   - An attrset with `{ source, path ? "skills", includes ? [], excludes ? [] }`
+  buildSkills = pkgs: skillsList:
+    let
+      processItem = item:
+        if builtins.isAttrs item && !(item ? type && item.type == "derivation") && (item ? source)
+        then
+          let
+            path = item.path or "skills";
+            extracted = extractInternal pkgs item.source path {
+              includes = item.includes or [];
+              excludes = item.excludes or [];
+            };
+          in
+            flattenSkills pkgs extracted
+        else
+          flattenSkills pkgs item;
+
+      flattened = map processItem skillsList;
+    in
+      merge pkgs "agent-skills" flattened;
+
+  # Legacy alias for backward compatibility
   buildAssets = {
     pkgs,
-    inputs ? null,
     skills ? [],
-    agents ? [],
-    commands ? [],
-    hooks ? [],
-  }: let
-    resolveMaybe = item:
-      if (builtins.isString item) && (lib.hasPrefix "http" item) && (inputs != null)
-      then resolveSource pkgs inputs item
-      else item;
-
-    resolvedSkills = map resolveMaybe skills;
-    resolvedAgents = map resolveMaybe agents;
-    resolvedCommands = map resolveMaybe commands;
-    resolvedHooks = map resolveMaybe hooks;
-
-    flattenedSkills = map (s: flattenSkills pkgs s) resolvedSkills;
-
-    skillsMerged = merge pkgs "agents-skills" flattenedSkills;
-    agentsMerged = merge pkgs "agents-agents" resolvedAgents;
-    commandsMerged = merge pkgs "agents-commands" resolvedCommands;
-    hooksMerged = merge pkgs "agents-hooks" resolvedHooks;
-  in
+    ...
+  }:
     pkgs.runCommand "agents-assets" {} ''
       mkdir -p $out/skills $out/agents $out/commands $out/hooks
-
-      echo "Copying skills..."
-      cp -a "${skillsMerged}/." "$out/skills/"
-      echo "Copying agents..."
-      cp -a "${agentsMerged}/." "$out/agents/"
-      echo "Copying commands..."
-      cp -a "${commandsMerged}/." "$out/commands/"
-      echo "Copying hooks..."
-      cp -a "${hooksMerged}/." "$out/hooks/"
+      cp -a "${buildSkills pkgs skills}/." "$out/skills/"
       chmod -R u+w "$out"
     '';
 
-  mkProjectEnv = {
-    pkgs,
-    inputs ? null,
+  # Creates agent environments across target directories (.agents/skills, .claude/skills, .codex/skills, .gemini/skills)
+  mkEnvironment = pkgs: {
     skills ? [],
-    agents ? [],
-    commands ? [],
-    hooks ? [],
+    targets ? {
+      agents = true;
+      claude = true;
+      codex = true;
+      gemini = true;
+    },
     ...
-  } @ args: let
-    assets = buildAssets {inherit pkgs inputs skills agents commands hooks;};
-    shellArgs = builtins.removeAttrs args ["pkgs" "inputs" "skills" "agents" "commands" "hooks"];
+  }: let
+    skillsPkg = buildSkills pkgs skills;
+    activeTargets = {
+      agents = targets.agents or true;
+      claude = targets.claude or true;
+      codex = targets.codex or true;
+      gemini = targets.gemini or true;
+    };
   in
-    pkgs.mkShell (shellArgs
-      // {
-        shellHook =
-          (args.shellHook or "")
-          + ''
+    lib.mkMerge [
+      (lib.mkIf activeTargets.agents {
+        ".agents/skills" = {
+          source = "${skillsPkg}";
+          recursive = true;
+        };
+      })
+      (lib.mkIf activeTargets.claude {
+        ".claude/skills" = {
+          source = "${skillsPkg}";
+          recursive = true;
+        };
+      })
+      (lib.mkIf activeTargets.codex {
+        ".codex/skills" = {
+          source = "${skillsPkg}";
+          recursive = true;
+        };
+      })
+      (lib.mkIf activeTargets.gemini {
+        ".gemini/skills" = {
+          source = "${skillsPkg}";
+          recursive = true;
+        };
+      })
+    ];
 
-            # Agents Project Bootstrap
-            mkdir -p .agents
-            cp -rn ${assets}/* ./.agents/
-            chmod -R u+w ./.agents
-          '';
-      });
+  # Curried helper bound to a pkgs instance
+  withPkgs = pkgs: {
+    extract = extract pkgs;
+    flattenSkills = flattenSkills pkgs;
+    buildSkills = buildSkills pkgs;
+    mkEnvironment = args: mkEnvironment pkgs args;
+  };
 
-  # Converts an opencode-style `mcpServers` attrset to a Claude Code compatible one.
-  # Claude Code requires an explicit "type" ("http" / "sse" / "ws") on remote servers,
-  # while opencode uses "remote" or infers the transport from the presence of "url".
-  # Usage: toClaudeMcpServers (lib.importJSON ./mcp.json).mcpServers
+  # Converts an opencode-style `mcpServers` attrset to Claude Code format
   toClaudeMcpServers = mcpServers: let
     toClaudeServer = server:
       if server ? command
@@ -192,65 +201,4 @@
       else server;
   in
     lib.mapAttrs (_: toClaudeServer) mcpServers;
-
-  # Creates agent environments across target directories
-  mkEnvironment = pkgs: {
-    inputs ? null,
-    skills ? [],
-    commands ? [],
-    agents ? [],
-    hooks ? [],
-    targets ? {
-      agents = true;
-      claude = true;
-      codex = true;
-      gemini = true;
-    },
-  }: let
-    assets = buildAssets {inherit pkgs inputs skills agents commands hooks;};
-    activeTargets = {
-      agents = targets.agents or true;
-      claude = targets.claude or true;
-      codex = targets.codex or true;
-      gemini = targets.gemini or true;
-    };
-  in
-    lib.mkMerge [
-      (lib.mkIf activeTargets.agents {
-        ".agents/skills" = {
-          source = "${assets}/skills";
-          recursive = true;
-        };
-        ".agents/commands" = {
-          source = "${assets}/commands";
-          recursive = true;
-        };
-        ".agents/agents" = {
-          source = "${assets}/agents";
-          recursive = true;
-        };
-        ".agents/hooks" = {
-          source = "${assets}/hooks";
-          recursive = true;
-        };
-      })
-      (lib.mkIf activeTargets.claude {
-        ".claude/skills" = {
-          source = "${assets}/skills";
-          recursive = true;
-        };
-      })
-      (lib.mkIf activeTargets.codex {
-        ".codex/skills" = {
-          source = "${assets}/skills";
-          recursive = true;
-        };
-      })
-      (lib.mkIf activeTargets.gemini {
-        ".gemini/skills" = {
-          source = "${assets}/skills";
-          recursive = true;
-        };
-      })
-    ];
 }

@@ -1,84 +1,127 @@
 { config, lib, pkgs, inputs ? null, ... }:
 let
-  cfg = config.programs.agent-resources;
+  cfg = config.programs.agent-skills;
+  legacyCfg = config.programs.agent-resources;
   nix-skills-lib = import ./lib { inherit lib; };
-in {
-  options.programs.agent-resources = {
-    enable = lib.mkEnableOption "Agent resources generation";
-    
-    agents = lib.mkOption {
-      type = lib.types.listOf lib.types.package;
-      default = [];
-      description = "List of agent packages to install.";
-    };
-    
-    skills = lib.mkOption {
-      type = lib.types.listOf lib.types.package;
-      default = [];
-      description = "List of skill packages to install.";
-    };
-    
-    commands = lib.mkOption {
-      type = lib.types.listOf lib.types.package;
-      default = [];
-      description = "List of command packages to install.";
-    };
-    
-    hooks = lib.mkOption {
-      type = lib.types.listOf lib.types.package;
-      default = [];
-      description = "List of hook packages to install.";
-    };
 
-    targets = {
-      agents = lib.mkOption {
-        type = lib.types.bool;
-        default = true;
-        description = "Install resources to ~/.agents (OpenCode and open agent standards).";
+  # Skill item submodule for structured declarations
+  skillSubmodule = lib.types.submodule {
+    options = {
+      source = lib.mkOption {
+        type = lib.types.package;
+        description = "Package containing skills.";
       };
-
-      claude = lib.mkOption {
-        type = lib.types.bool;
-        default = true;
-        description = "Install skills to ~/.claude/skills (Claude Code).";
+      path = lib.mkOption {
+        type = lib.types.str;
+        default = "skills";
+        description = "Subdirectory inside package containing skills (default: 'skills').";
       };
-
-      codex = lib.mkOption {
-        type = lib.types.bool;
-        default = true;
-        description = "Install skills to ~/.codex/skills (Codex CLI).";
-      };
-
-      gemini = lib.mkOption {
-        type = lib.types.bool;
-        default = true;
-        description = "Install skills to ~/.gemini/skills (Antigravity / agy).";
-      };
-    };
-    
-    sources = {
-      agents = lib.mkOption {
+      includes = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [];
-        description = "List of GitHub URLs to resolve as agent sources.";
+        description = "List of skill directories to include.";
       };
-      
-      skills = lib.mkOption {
+      excludes = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [];
-        description = "List of GitHub URLs to resolve as skill sources.";
+        description = "List of skill directories to exclude.";
       };
     };
   };
 
-  config = lib.mkIf cfg.enable {
+  # Unified targets submodule
+  targetsOptions = {
+    agents = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Install skills to ~/.agents/skills (OpenCode / open agent standard).";
+    };
+
+    claude = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Install skills to ~/.claude/skills (Claude Code).";
+    };
+
+    codex = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Install skills to ~/.codex/skills (OpenAI Codex CLI).";
+    };
+
+    gemini = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Install skills to ~/.gemini/skills (Antigravity / agy).";
+    };
+  };
+in {
+  options.programs = {
+    agent-skills = {
+      enable = lib.mkEnableOption "Agent skills installation across AI agents";
+
+      skills = lib.mkOption {
+        type = lib.types.listOf (lib.types.either lib.types.package skillSubmodule);
+        default = [];
+        description = "List of skill packages or declarative skill source specifications.";
+      };
+
+      targets = targetsOptions;
+    };
+
+    # Legacy alias options for backward compatibility
+    agent-resources = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Deprecated: Use programs.agent-skills.enable instead.";
+      };
+
+      skills = lib.mkOption {
+        type = lib.types.listOf lib.types.anything;
+        default = [];
+        description = "Deprecated: Use programs.agent-skills.skills instead.";
+      };
+
+      targets = lib.mkOption {
+        type = lib.types.attrsOf lib.types.bool;
+        default = {};
+        description = "Deprecated: Use programs.agent-skills.targets instead.";
+      };
+
+      commands = lib.mkOption {
+        type = lib.types.listOf lib.types.anything;
+        default = [];
+        description = "Deprecated: No longer supported.";
+      };
+
+      agents = lib.mkOption {
+        type = lib.types.listOf lib.types.anything;
+        default = [];
+        description = "Deprecated: No longer supported.";
+      };
+
+      hooks = lib.mkOption {
+        type = lib.types.listOf lib.types.anything;
+        default = [];
+        description = "Deprecated: No longer supported.";
+      };
+    };
+  };
+
+  config = let
+    effectiveEnable = cfg.enable || legacyCfg.enable;
+    effectiveSkills = if cfg.enable then cfg.skills else legacyCfg.skills;
+    effectiveTargets = if cfg.enable then cfg.targets else {
+      agents = legacyCfg.targets.agents or true;
+      claude = legacyCfg.targets.claude or true;
+      codex = legacyCfg.targets.codex or true;
+      gemini = legacyCfg.targets.gemini or true;
+    };
+  in lib.mkIf effectiveEnable {
     home.file = nix-skills-lib.mkEnvironment pkgs {
-      inherit inputs;
-      agents = cfg.agents ++ cfg.sources.agents;
-      skills = cfg.skills ++ cfg.sources.skills;
-      commands = cfg.commands;
-      hooks = cfg.hooks;
-      targets = cfg.targets;
+      skills = effectiveSkills;
+      targets = effectiveTargets;
     };
   };
 }
