@@ -29,6 +29,32 @@ in {
       default = [];
       description = "List of hook packages to install.";
     };
+
+    targets = {
+      agents = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Install resources to ~/.agents (OpenCode and open agent standards).";
+      };
+
+      claude = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Install skills to ~/.claude/skills (Claude Code).";
+      };
+
+      codex = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Install skills to ~/.codex/skills (Codex CLI).";
+      };
+
+      gemini = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Install skills to ~/.gemini/skills (Antigravity / agy).";
+      };
+    };
     
     sources = {
       agents = lib.mkOption {
@@ -52,6 +78,7 @@ in {
       skills = cfg.skills ++ cfg.sources.skills;
       commands = cfg.commands;
       hooks = cfg.hooks;
+      targets = cfg.targets;
     };
   };
 }
