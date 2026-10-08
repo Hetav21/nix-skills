@@ -119,6 +119,13 @@ in {
       gemini = legacyCfg.targets.gemini or true;
     };
   in lib.mkIf effectiveEnable {
+    warnings =
+      lib.optional legacyCfg.enable "programs.agent-resources is deprecated; use programs.agent-skills instead."
+      ++ lib.optional (legacyCfg.commands != [] || legacyCfg.agents != [] || legacyCfg.hooks != [])
+        "programs.agent-resources.{commands,agents,hooks} are no longer supported and are ignored."
+      ++ lib.optional (cfg.enable && legacyCfg.enable && legacyCfg.skills != [])
+        "programs.agent-resources.skills is ignored because programs.agent-skills is enabled.";
+
     home.file = nix-skills-lib.mkEnvironment pkgs {
       skills = effectiveSkills;
       targets = effectiveTargets;
