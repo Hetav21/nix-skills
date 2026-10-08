@@ -119,14 +119,14 @@ programs.agent-mcp = {
 };
 ```
 
-| Agent       | Written to                                                                                   |
-| ----------- | -------------------------------------------------------------------------------------------- |
-| Claude Code | merged into the user scope of `~/.claude.json` on activation                                 |
-| OpenCode    | `programs.opencode.settings.mcp` if that module is enabled, else `~/.config/opencode/opencode.json` |
-| Codex       | `programs.codex.settings.mcp_servers` if that module is enabled, else `~/.codex/config.toml` |
-| Antigravity | `programs.antigravity-cli.mcpServers` if that module is enabled, else `~/.gemini/config/mcp_config.json` (read by both the IDE and `agy`) |
+| Agent       | Written to                                                                                          |
+| ----------- | --------------------------------------------------------------------------------------------------- |
+| Claude Code | merged into the user scope (`mcpServers`) of `~/.claude.json`                                       |
+| OpenCode    | `programs.opencode.settings.mcp` if that module is enabled, else merged into `~/.config/opencode/opencode.json` (`mcp`) |
+| Codex       | `programs.codex.settings.mcp_servers` if that module is enabled, else merged into `~/.codex/config.toml` (`mcp_servers`) |
+| Antigravity | `programs.antigravity-cli.mcpServers` if that module is enabled, else merged into `~/.gemini/config/mcp_config.json` (`mcpServers`, read by both the IDE and `agy`) |
 
-Claude Code rewrites `~/.claude.json` constantly, so it can't be a store symlink. The activation step replaces only the servers it manages. It records their names in `$XDG_STATE_HOME/nix-skills/claude-mcp-servers.json` so servers dropped from `servers` are removed, while servers added with `claude mcp add` are kept.
+Agents rewrite these files at runtime (Claude Code's state, `codex mcp add`, `agy mcp disable`, trusting a project), so they are never replaced with read-only store symlinks. On activation, `agent-mcp-merge` sets only the declared servers and keeps everything else in the file, including TOML comments. Server names are recorded in `$XDG_STATE_HOME/nix-skills/mcp/<agent>.json`, so a server dropped from `servers` is removed at the next activation, while servers added by hand are kept. A file that can't be parsed is left untouched with a warning.
 
 The module also installs the `agent-mcp` CLI.
 
@@ -134,12 +134,14 @@ The module also installs the `agent-mcp` CLI.
 
 Run `agent-mcp sync` in a directory with an `mcp.json` (or `agent-mcp sync path/to/mcp.json`). It writes next to it:
 
-| Agent       | File                      | Ownership                                                     |
-| ----------- | ------------------------- | ------------------------------------------------------------- |
-| Claude Code | `.mcp.json`               | whole file                                                    |
-| OpenCode    | `opencode.json`           | only the `mcp` key; other keys kept                           |
-| Codex       | `.codex/config.toml`      | only `[mcp_servers]`; other keys kept, comments/format are not |
-| Antigravity | `.agents/mcp_config.json` | whole file                                                    |
+| Agent       | File                      | Key replaced  |
+| ----------- | ------------------------- | ------------- |
+| Claude Code | `.mcp.json`               | `mcpServers`  |
+| OpenCode    | `opencode.json`           | `mcp`         |
+| Codex       | `.codex/config.toml`      | `mcp_servers` |
+| Antigravity | `.agents/mcp_config.json` | `mcpServers`  |
+
+Only that key is replaced, entirely, since `mcp.json` is the project's source of truth; everything else in each file is kept, including TOML comments.
 
 - Claude Code asks once per project before starting `.mcp.json` servers.
 - Codex only reads `.codex/config.toml` in projects it trusts (`[projects."<path>"] trust_level = "trusted"`).

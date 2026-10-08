@@ -17,12 +17,16 @@
     };
 
     packages = forAllSystems (system: rec {
-      agent-mcp = nixpkgs.legacyPackages.${system}.callPackage ./pkgs/agent-mcp.nix {};
+      agent-mcp = nixpkgs.legacyPackages.${system}.callPackage ./pkgs/agent-mcp {};
       default = agent-mcp;
     });
 
     checks = forAllSystems (system: {
       inherit (self.packages.${system}) agent-mcp;
+      agent-mcp-merge = import ./tests/merge.nix {
+        pkgs = nixpkgs.legacyPackages.${system};
+        inherit (self.packages.${system}.agent-mcp) merge;
+      };
       mcp-lib = import ./tests/mcp.nix {
         inherit lib;
         pkgs = nixpkgs.legacyPackages.${system};
