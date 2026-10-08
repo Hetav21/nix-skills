@@ -1,5 +1,5 @@
 {
-  description = "A decoupled library for setting up Claude skills and agents in Nix flakes.";
+  description = "A decoupled library and Home Manager module for managing skills across AI agents (Claude Code, OpenAI Codex, OpenCode, Antigravity).";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -10,5 +10,6 @@
   in {
     lib = import ./lib { inherit lib; };
     homeManagerModules.default = ./module.nix;
+    homeManagerModules.agent-skills = ./module.nix;
   };
 }
