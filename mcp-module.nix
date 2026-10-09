@@ -45,10 +45,12 @@ in {
         # or inline:
         {
           context7 = {
+            type = "remote";
             url = "https://mcp.context7.com/mcp";
-            headers.CONTEXT7_API_KEY = "''${CONTEXT7_API_KEY}";
+            headers.CONTEXT7_API_KEY = "{env:CONTEXT7_API_KEY}";
           };
           playwright = {
+            type = "local";
             command = "bunx";
             args = [ "-y" "@playwright/mcp@latest" ];
             disabled = true;
@@ -57,10 +59,10 @@ in {
       '';
       description = ''
         Canonical MCP servers (the `mcpServers` of an `mcp.json`), rendered for
-        every enabled target. Stdio servers take `command`, `args` and `env`;
-        remote servers take `url`, `headers` and an optional `type`
-        (`"http"` or `"sse"`). Any server may set `disabled = true`.
-        Reference environment variables as `''${VAR}`.
+        every enabled target. Every server sets `type`: `"local"` servers take
+        `command`, `args` and `env`; `"remote"` servers take `url` and `headers`.
+        Any server may set `disabled = true`. Reference environment variables
+        as `{env:VAR}`.
       '';
     };
 

@@ -1,42 +1,46 @@
 # Renders one canonical `mcpServers` attrset into each agent's MCP config shape.
 #
-# Canonical server (the Claude Code `.mcp.json` dialect plus `disabled`):
-#   stdio:  { command, args ? [], env ? {}, disabled ? false }
-#   remote: { url, type ? "http" | "sse", headers ? {}, disabled ? false }
-# Environment references use `${VAR}` in any string; each renderer translates
+# Canonical server:
+#   local:  { type = "local";  command, args ? [], env ? {}, disabled ? false }
+#   remote: { type = "remote"; url, headers ? {}, disabled ? false }
+# Environment references use `{env:VAR}` in any string; each renderer translates
 # them to the client's own syntax, or skips the server with a warning when the
 # client cannot express them.
 {lib}: let
-  allowedKeys = ["type" "command" "args" "env" "url" "headers" "disabled"];
+  allowedKeys = {
+    local = ["type" "command" "args" "env" "disabled"];
+    remote = ["type" "url" "headers" "disabled"];
+  };
   varName = "[A-Za-z_][A-Za-z0-9_]*";
+  ref = "\\{env:(${varName})}";
 
-  # "${VAR}" -> "VAR"; anything else -> null
+  # "{env:VAR}" -> "VAR"; anything else -> null
   wholeRef = s: let
-    m = builtins.match "\\$\\{(${varName})}" s;
+    m = builtins.match ref s;
   in
     if m == null
     then null
     else builtins.head m;
 
-  hasRef = s: builtins.match ".*\\$\\{${varName}}.*" s != null;
+  hasRef = s: builtins.match ".*${ref}.*" s != null;
   anyRef = values: lib.any hasRef (lib.filter builtins.isString values);
 
-  # Names of env entries that forward the same variable (`X = "${X}"`), or null
-  # if some entry references a variable any other way.
+  # Rewrites every "{env:VAR}" in s to `f "VAR"`
+  mapRefs = f: s:
+    lib.concatMapStrings (part:
+      if builtins.isList part
+      then f (builtins.head part)
+      else part)
+    (builtins.split ref s);
+
+  # Names of env entries that forward the same variable (`X = "{env:X}"`), or
+  # null if some entry references a variable any other way.
   forwardedEnv = env: let
     refs = lib.filterAttrs (_: hasRef) env;
   in
     if lib.all (n: wholeRef refs.${n} == n) (builtins.attrNames refs)
     then builtins.attrNames refs
     else null;
-
-  # "a ${X} b" -> "a {env:X} b"
-  toOpencodeRefs = s:
-    lib.concatMapStrings (part:
-      if builtins.isList part
-      then "{env:${builtins.head part}}"
-      else part)
-    (builtins.split "\\$\\{(${varName})}" s);
 
   mapStrings = f: v:
     if builtins.isString v
@@ -49,36 +53,20 @@
 
   # Validates a canonical server and fills defaults.
   normalize = name: server: let
-    unknown = lib.subtractLists allowedKeys (builtins.attrNames server);
     fail = msg: throw "nix-skills mcp: server '${name}': ${msg}";
-    isRemote = server ? url;
-    type =
-      server.type or (
-        if isRemote
-        then "http"
-        else "stdio"
-      );
+    type = server.type or null;
+    unknown = lib.subtractLists allowedKeys.${type} (builtins.attrNames server);
   in
-    if unknown != []
-    then fail "unknown keys ${builtins.toJSON unknown} (allowed: ${builtins.toJSON allowedKeys})"
-    else if (server ? command) == isRemote
-    then fail "set exactly one of `command` or `url`"
-    else if !(builtins.elem type ["stdio" "http" "sse"])
-    then fail "type must be \"stdio\", \"http\" or \"sse\", got ${builtins.toJSON type}"
-    else if isRemote == (type == "stdio")
-    then
-      fail "type \"${type}\" does not match the use of `${
-        if isRemote
-        then "url"
-        else "command"
-      }`"
-    else if isRemote && (server ? args || server ? env)
-    then fail "`args` and `env` are only valid with `command`"
-    else if !isRemote && server ? headers
-    then fail "`headers` is only valid with `url`"
+    if !(builtins.elem type ["local" "remote"])
+    then fail "set `type` to \"local\" or \"remote\", got ${builtins.toJSON type}"
+    else if unknown != []
+    then fail "unknown keys ${builtins.toJSON unknown} for a ${type} server (allowed: ${builtins.toJSON allowedKeys.${type}})"
+    else if type == "local" && !(server ? command)
+    then fail "a local server needs `command`"
+    else if type == "remote" && !(server ? url)
+    then fail "a remote server needs `url`"
     else {
-      inherit type;
-      remote = isRemote;
+      remote = type == "remote";
       disabled = server.disabled or false;
       command = server.command or null;
       args = server.args or [];
@@ -100,62 +88,67 @@
 
   optionalNonEmpty = name: value: lib.optionalAttrs (value != {} && value != []) {${name} = value;};
 in rec {
-  # Claude Code: `.mcp.json` / `~/.claude.json`. Expands `${VAR}` natively.
-  # Has no per-server disable flag, so disabled servers are omitted.
+  # Claude Code: `.mcp.json` / `~/.claude.json`. References become `${VAR}`,
+  # which it expands. Has no per-server disable flag, so disabled servers are
+  # omitted.
   toClaude = renderWith "claude" (s:
     if s.disabled
     then null
-    else if s.remote
-    then {inherit (s) type url;} // optionalNonEmpty "headers" s.headers
     else
-      {
-        type = "stdio";
-        inherit (s) command;
-      }
-      // optionalNonEmpty "args" s.args
-      // optionalNonEmpty "env" s.env);
-
-  # OpenCode: `opencode.json` `mcp`. References become `{env:VAR}`.
-  toOpencode = renderWith "opencode" (s:
-    mapStrings toOpencodeRefs (
-      {enabled = !s.disabled;}
-      // (
+      mapStrings (mapRefs (v: "\${${v}}")) (
         if s.remote
         then
           {
-            type = "remote";
+            type = "http";
             inherit (s) url;
           }
           // optionalNonEmpty "headers" s.headers
         else
           {
-            type = "local";
-            command = [s.command] ++ s.args;
+            type = "stdio";
+            inherit (s) command;
           }
-          // optionalNonEmpty "environment" s.env
-      )
+          // optionalNonEmpty "args" s.args
+          // optionalNonEmpty "env" s.env
+      ));
+
+  # OpenCode: `opencode.json` `mcp`. Understands `{env:VAR}` natively.
+  toOpencode = renderWith "opencode" (s:
+    {enabled = !s.disabled;}
+    // (
+      if s.remote
+      then
+        {
+          type = "remote";
+          inherit (s) url;
+        }
+        // optionalNonEmpty "headers" s.headers
+      else
+        {
+          type = "local";
+          command = [s.command] ++ s.args;
+        }
+        // optionalNonEmpty "environment" s.env
     ));
 
   # OpenAI Codex: `config.toml` `mcp_servers`. Codex never interpolates and
-  # passes stdio servers only a minimal environment, so `${VAR}` must map onto
-  # its env-forwarding keys:
-  #   env.X = "${X}"                        -> env_vars = [ "X" ]
-  #   headers.Authorization = "Bearer ${X}" -> bearer_token_env_var = "X"
-  #   headers.H = "${X}"                    -> env_http_headers.H = "X"
+  # passes local servers only a minimal environment, so `{env:VAR}` must map
+  # onto its env-forwarding keys:
+  #   env.X = "{env:X}"                        -> env_vars = [ "X" ]
+  #   headers.Authorization = "Bearer {env:X}" -> bearer_token_env_var = "X"
+  #   headers.H = "{env:X}"                    -> env_http_headers.H = "X"
   toCodex = renderWith "codex" (s: let
-    bearer = builtins.match "Bearer \\$\\{(${varName})}" (s.headers.Authorization or "");
+    bearer = builtins.match "Bearer ${ref}" (s.headers.Authorization or "");
     headers = removeAttrs s.headers (lib.optional (bearer != null) "Authorization");
     refHeaders = lib.filterAttrs (_: hasRef) headers;
     forwarded = forwardedEnv s.env;
   in
-    if s.type == "sse"
-    then {skip = "Codex only supports streamable HTTP, not SSE";}
-    else if anyRef ([s.command s.url] ++ s.args)
-    then {skip = "Codex does not expand \${VAR} in command, args or url";}
+    if anyRef ([s.command s.url] ++ s.args)
+    then {skip = "Codex does not expand {env:VAR} in command, args or url";}
     else if lib.any (h: wholeRef h == null) (builtins.attrValues refHeaders)
-    then {skip = "header values must be a literal, \"\${VAR}\" or \"Bearer \${VAR}\" for Codex";}
+    then {skip = "header values must be a literal, \"{env:VAR}\" or \"Bearer {env:VAR}\" for Codex";}
     else if forwarded == null
-    then {skip = "env values must be a literal or \"\${SAME_NAME}\" for Codex";}
+    then {skip = "env values must be a literal or \"{env:SAME_NAME}\" for Codex";}
     else
       {enabled = !s.disabled;}
       // (
@@ -173,17 +166,15 @@ in rec {
       ));
 
   # Antigravity (IDE and `agy`): `mcp_config.json`. Antigravity never
-  # interpolates, but stdio servers inherit its environment, so `X = "${X}"`
-  # env entries are simply dropped. Only speaks streamable HTTP.
+  # interpolates, but local servers inherit its environment, so `X = "{env:X}"`
+  # env entries are simply dropped.
   toAntigravity = renderWith "antigravity" (s: let
     forwarded = forwardedEnv s.env;
   in
-    if s.type == "sse"
-    then {skip = "Antigravity only supports streamable HTTP, not SSE";}
-    else if anyRef ([s.command s.url] ++ s.args ++ builtins.attrValues s.headers)
-    then {skip = "Antigravity does not expand \${VAR} in command, args, url or headers";}
+    if anyRef ([s.command s.url] ++ s.args ++ builtins.attrValues s.headers)
+    then {skip = "Antigravity does not expand {env:VAR} in command, args, url or headers";}
     else if forwarded == null
-    then {skip = "env values must be a literal or \"\${SAME_NAME}\" for Antigravity";}
+    then {skip = "env values must be a literal or \"{env:SAME_NAME}\" for Antigravity";}
     else
       {inherit (s) disabled;}
       // (

@@ -93,10 +93,12 @@ Write MCP servers once, in one `mcp.json`, and every agent gets them: globally t
 {
   "mcpServers": {
     "context7": {
+      "type": "remote",
       "url": "https://mcp.context7.com/mcp",
-      "headers": { "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}" }
+      "headers": { "CONTEXT7_API_KEY": "{env:CONTEXT7_API_KEY}" }
     },
     "playwright": {
+      "type": "local",
       "command": "bunx",
       "args": ["-y", "@playwright/mcp@latest"],
       "env": { "DEBUG": "pw:mcp" },
@@ -106,8 +108,8 @@ Write MCP servers once, in one `mcp.json`, and every agent gets them: globally t
 }
 ```
 
-- **stdio** servers take `command`, `args`, `env`; **remote** servers take `url`, `headers` and an optional `type` (`"http"`, the default, or `"sse"`). Any server may set `disabled`. Other keys are an evaluation error.
-- Reference environment variables as `${VAR}`; each agent gets its own syntax (table below).
+- Every server sets `type`: `"local"` servers take `command`, `args`, `env`; `"remote"` servers take `url`, `headers` (streamable HTTP). Any server may set `disabled`. Other keys are an evaluation error.
+- Reference environment variables as `{env:VAR}`; each agent gets its own syntax (table below).
 
 ### Global (Home Manager)
 
@@ -150,13 +152,12 @@ Only that key is replaced, entirely, since `mcp.json` is the project's source of
 
 ### Per-agent translation
 
-None of OpenCode, Codex or Antigravity understands `${VAR}`, so references are translated. A server an agent cannot express is skipped for that agent with an evaluation warning naming the reason; nothing is silently dropped.
+Only OpenCode understands `{env:VAR}`, so references are translated for the others. A server an agent cannot express is skipped for that agent with an evaluation warning naming the reason; nothing is silently dropped.
 
-| Canonical                           | Claude Code | OpenCode         | Codex                          | Antigravity             |
-| ----------------------------------- | ----------- | ---------------- | ------------------------------ | ----------------------- |
-| `env.X = "${X}"`                    | as is       | `{env:X}`        | `env_vars = ["X"]`             | dropped (inherited)     |
-| `headers.Authorization = "Bearer ${X}"` | as is   | `{env:X}`        | `bearer_token_env_var = "X"`   | **skipped**             |
-| `headers.H = "${X}"`                | as is       | `{env:X}`        | `env_http_headers.H = "X"`     | **skipped**             |
-| `${X}` in `command`/`args`/`url`, or `env.Y = "${X}"` | as is | `{env:X}` | **skipped**        | **skipped**             |
-| `type = "sse"`                      | `sse`       | `remote`         | **skipped** (HTTP only)        | **skipped** (HTTP only) |
-| `disabled = true`                   | omitted     | `enabled = false` | `enabled = false`             | `disabled = true`       |
+| Canonical                                      | Claude Code | OpenCode          | Codex                        | Antigravity         |
+| ---------------------------------------------- | ----------- | ----------------- | ---------------------------- | ------------------- |
+| `env.X = "{env:X}"`                            | `${X}`      | as is             | `env_vars = ["X"]`           | dropped (inherited) |
+| `headers.Authorization = "Bearer {env:X}"`     | `${X}`      | as is             | `bearer_token_env_var = "X"` | **skipped**         |
+| `headers.H = "{env:X}"`                        | `${X}`      | as is             | `env_http_headers.H = "X"`   | **skipped**         |
+| `{env:X}` in `command`/`args`/`url`, or `env.Y = "{env:X}"` | `${X}` | as is | **skipped**                  | **skipped**         |
+| `disabled = true`                              | omitted     | `enabled = false` | `enabled = false`            | `disabled = true`   |
