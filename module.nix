@@ -33,25 +33,25 @@ let
   targetsOptions = {
     agents = lib.mkOption {
       type = lib.types.bool;
-      default = true;
+      default = false;
       description = "Install skills to ~/.agents/skills (OpenCode / open agent standard).";
     };
 
     claude = lib.mkOption {
       type = lib.types.bool;
-      default = true;
+      default = false;
       description = "Install skills to ~/.claude/skills (Claude Code).";
     };
 
     codex = lib.mkOption {
       type = lib.types.bool;
-      default = true;
+      default = false;
       description = "Install skills to ~/.codex/skills (OpenAI Codex CLI).";
     };
 
     gemini = lib.mkOption {
       type = lib.types.bool;
-      default = true;
+      default = false;
       description = "Install skills to ~/.gemini/skills (Antigravity / agy).";
     };
   };
@@ -124,7 +124,9 @@ in {
       ++ lib.optional (legacyCfg.commands != [] || legacyCfg.agents != [] || legacyCfg.hooks != [])
         "programs.agent-resources.{commands,agents,hooks} are no longer supported and are ignored."
       ++ lib.optional (cfg.enable && legacyCfg.enable && legacyCfg.skills != [])
-        "programs.agent-resources.skills is ignored because programs.agent-skills is enabled.";
+        "programs.agent-resources.skills is ignored because programs.agent-skills is enabled."
+      ++ lib.optional (cfg.enable && !lib.any lib.id (lib.attrValues cfg.targets))
+        "programs.agent-skills is enabled but installs nowhere: set programs.agent-skills.targets.<agent> = true.";
 
     home.file = nix-skills-lib.mkEnvironment pkgs {
       skills = effectiveSkills;

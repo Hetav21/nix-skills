@@ -42,7 +42,7 @@ Configure `programs.agent-skills`:
 programs.agent-skills = {
   enable = true;
 
-  # Target agents (all enabled by default)
+  # Target agents (all off by default; turn on the ones you use)
   targets = {
     agents = true;  # ~/.agents/skills
     claude = true;  # ~/.claude/skills
@@ -119,7 +119,13 @@ programs.agent-mcp = {
   file = ./mcp.json;
   # servers.extra = { type = "remote"; url = "https://example.com/mcp"; };  # added on top of `file`
   # commands.pnpm = lib.getExe pkgs.pnpm;  # npx, bunx and uvx are resolved by default
-  # targets = { claude = true; opencode = true; codex = true; antigravity = true; };  # defaults
+  # Agents to write to (all off by default)
+  targets = {
+    claude = true;
+    opencode = true;
+    codex = true;
+    antigravity = true;
+  };
 };
 ```
 
