@@ -116,10 +116,14 @@ Write MCP servers once, in one `mcp.json`, and every agent gets them: globally t
 ```nix
 programs.agent-mcp = {
   enable = true;
-  servers = (lib.importJSON ./mcp.json).mcpServers;
+  file = ./mcp.json;
+  # servers.extra = { type = "remote"; url = "https://example.com/mcp"; };  # added on top of `file`
+  # commands.pnpm = lib.getExe pkgs.pnpm;  # npx, bunx and uvx are resolved by default
   # targets = { claude = true; opencode = true; codex = true; antigravity = true; };  # defaults
 };
 ```
+
+A local server whose `command` is `npx`, `bunx`, `uvx` or another name in `commands` runs that Nix store executable, so agents started outside a shell don't depend on `PATH`. The same `mcp.json` therefore works unchanged with `agent-mcp sync`, where commands come from the project's `PATH`.
 
 | Agent       | Written to                                                                                          |
 | ----------- | --------------------------------------------------------------------------------------------------- |

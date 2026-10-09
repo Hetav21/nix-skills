@@ -6,7 +6,16 @@
   ...
 }: let
   cfg = config.programs.agent-mcp;
-  rendered = (import ./lib/mcp.nix {inherit lib;}).render cfg.servers;
+
+  fileServers = lib.optionalAttrs (cfg.file != null) (lib.importJSON cfg.file).mcpServers;
+  # A bare `command` named in `commands` (e.g. "bunx") runs that executable
+  resolveCommand = server:
+    if builtins.isString (server.command or null) && cfg.commands ? ${server.command}
+    then server // {command = cfg.commands.${server.command};}
+    else server;
+  rendered =
+    (import ./lib/mcp.nix {inherit lib;}).render
+    (lib.mapAttrs (_: resolveCommand) (fileServers // cfg.servers));
   jsonFormat = pkgs.formats.json {};
 
   mkTargetOption = description:
@@ -37,12 +46,22 @@ in {
   options.programs.agent-mcp = {
     enable = lib.mkEnableOption "one MCP server definition shared by every AI agent";
 
+    file = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      example = lib.literalExpression "./mcp.json";
+      description = ''
+        A canonical {file}`mcp.json` (the same file `agent-mcp sync` reads in a
+        project) whose `mcpServers` are rendered for every enabled target.
+        {option}`servers` are added on top; a server defined in both is taken
+        from {option}`servers`.
+      '';
+    };
+
     servers = lib.mkOption {
       type = lib.types.attrsOf jsonFormat.type;
       default = {};
       example = lib.literalExpression ''
-        (lib.importJSON ./mcp.json).mcpServers
-        # or inline:
         {
           context7 = {
             type = "remote";
@@ -58,11 +77,22 @@ in {
         }
       '';
       description = ''
-        Canonical MCP servers (the `mcpServers` of an `mcp.json`), rendered for
-        every enabled target. Every server sets `type`: `"local"` servers take
+        Canonical MCP servers (shaped like the `mcpServers` of an `mcp.json`),
+        rendered for every enabled target. Every server sets `type`: `"local"` servers take
         `command`, `args` and `env`; `"remote"` servers take `url` and `headers`.
         Any server may set `disabled = true`. Reference environment variables
         as `{env:VAR}`.
+      '';
+    };
+
+    commands = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = {};
+      example = lib.literalExpression ''{ pnpm = lib.getExe pkgs.pnpm; }'';
+      description = ''
+        Executables for bare `command` names: a local server whose `command`
+        is a key here runs that executable instead, so agents don't depend on
+        {env}`PATH`. `npx`, `bunx` and `uvx` resolve to nixpkgs by default.
       '';
     };
 
@@ -108,7 +138,14 @@ in {
     };
 
     programs =
-      lib.optionalAttrs (hasHm "opencode") {
+      {
+        agent-mcp.commands = lib.mapAttrs (_: lib.mkDefault) {
+          npx = lib.getExe' pkgs.nodejs "npx";
+          bunx = lib.getExe' pkgs.bun "bunx";
+          uvx = lib.getExe' pkgs.uv "uvx";
+        };
+      }
+      // lib.optionalAttrs (hasHm "opencode") {
         opencode.settings.mcp = lib.mkIf (t.opencode && viaHm "opencode") rendered.opencode;
       }
       // lib.optionalAttrs (hasHm "codex") {
