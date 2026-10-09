@@ -7,37 +7,41 @@
   throws = expr: !(builtins.tryEval (builtins.deepSeq expr expr)).success;
 
   servers = {
-    grep.url = "https://mcp.grep.app";
+    grep = {
+      type = "remote";
+      url = "https://mcp.grep.app";
+    };
     context7 = {
+      type = "remote";
       url = "https://mcp.context7.com/mcp";
-      headers.CONTEXT7_API_KEY = "\${CONTEXT7_API_KEY}";
+      headers.CONTEXT7_API_KEY = "{env:CONTEXT7_API_KEY}";
     };
     github = {
+      type = "remote";
       url = "https://api.example.com/mcp";
       headers = {
-        Authorization = "Bearer \${GH_TOKEN}";
+        Authorization = "Bearer {env:GH_TOKEN}";
         X-Static = "v1";
       };
     };
-    legacy = {
-      type = "sse";
-      url = "https://old.example.com/sse";
-    };
     playwright = {
+      type = "local";
       command = "bunx";
       args = ["-y" "@playwright/mcp@latest"];
       disabled = true;
     };
     db = {
+      type = "local";
       command = "dbhub";
       env = {
-        DATABASE_URL = "\${DATABASE_URL}";
+        DATABASE_URL = "{env:DATABASE_URL}";
         MODE = "ro";
       };
     };
     tokenArg = {
+      type = "local";
       command = "tool";
-      args = ["--token" "\${TOKEN}"];
+      args = ["--token" "{env:TOKEN}"];
     };
   };
   r = mcp.render servers;
@@ -50,10 +54,6 @@
         url = "https://mcp.context7.com/mcp";
         headers.CONTEXT7_API_KEY = "\${CONTEXT7_API_KEY}";
       };
-    };
-    testClaudeKeepsSse = {
-      expr = r.claude.legacy.type;
-      expected = "sse";
     };
     testClaudeStdio = {
       expr = r.claude.tokenArg;
@@ -139,40 +139,32 @@
       expected = ["db" "grep" "playwright"];
     };
 
+    testRejectsMissingType = {
+      expr = throws (mcp.toClaude {x.url = "u";});
+      expected = true;
+    };
     testRejectsUnknownKey = {
       expr = throws (mcp.toClaude {
         x = {
+          type = "remote";
           url = "u";
           enabled = false;
         };
       });
       expected = true;
     };
-    testRejectsCommandAndUrl = {
+    testRejectsKeyOfOtherType = {
       expr = throws (mcp.toClaude {
         x = {
-          url = "u";
+          type = "local";
           command = "c";
-        };
-      });
-      expected = true;
-    };
-    testRejectsTypeMismatch = {
-      expr = throws (mcp.toClaude {
-        x = {
-          type = "stdio";
           url = "u";
         };
       });
       expected = true;
     };
-    testRejectsHeadersOnStdio = {
-      expr = throws (mcp.toClaude {
-        x = {
-          command = "c";
-          headers.A = "b";
-        };
-      });
+    testRejectsLocalWithoutCommand = {
+      expr = throws (mcp.toClaude {x.type = "local";});
       expected = true;
     };
   };
