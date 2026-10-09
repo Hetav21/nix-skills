@@ -21,7 +21,7 @@
   mkTargetOption = description:
     lib.mkOption {
       type = lib.types.bool;
-      default = true;
+      default = false;
       inherit description;
     };
 
@@ -138,6 +138,10 @@ in {
     hasHm = name: options.programs ? ${name};
     viaHm = name: hasHm name && config.programs.${name}.enable;
   in {
+    warnings =
+      lib.optional (!lib.any lib.id (lib.attrValues t))
+      "programs.agent-mcp is enabled but writes nowhere: set programs.agent-mcp.targets.<agent> = true.";
+
     home.packages = [cli];
 
     home.activation = {
