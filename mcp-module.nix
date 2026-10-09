@@ -62,6 +62,12 @@ in {
   options.programs.agent-mcp = {
     enable = lib.mkEnableOption "one MCP server definition shared by every AI agent";
 
+    installCli = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Install the agent-mcp command for synchronizing project-local MCP configuration.";
+    };
+
     file = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
@@ -142,7 +148,7 @@ in {
       lib.optional (!lib.any lib.id (lib.attrValues t))
       "programs.agent-mcp is enabled but writes nowhere: set programs.agent-mcp.targets.<agent> = true.";
 
-    home.packages = [cli];
+    home.packages = lib.optional cfg.installCli cli;
 
     home.activation = {
       agentMcpClaude = mergeStep "claude" t.claude "${home}/.claude.json" "mcpServers";

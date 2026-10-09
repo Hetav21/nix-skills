@@ -140,7 +140,12 @@ A local server whose `command` is `npx`, `bunx`, `uvx` or another name in `comma
 
 Agents rewrite these files at runtime (Claude Code's state, `codex mcp add`, `agy mcp disable`, trusting a project), so they are never replaced with read-only store symlinks. On activation, `agent-mcp-merge` sets only the declared servers and keeps everything else in the file, including TOML comments. Server names are recorded in `$XDG_STATE_HOME/nix-skills/mcp/<agent>.json`, so a server dropped from `servers` is removed at the next activation, while servers added by hand are kept. Turning a target off likewise removes the servers it added from that agent's file. Disabling `programs.agent-mcp` itself leaves them in place, so turn the targets off for one switch first. A file that can't be parsed is left untouched with a warning.
 
-The module also installs the `agent-mcp` CLI.
+The module does not install the `agent-mcp` CLI by default. Enable it only
+when project-local synchronization is needed:
+
+```nix
+programs.agent-mcp.installCli = true;
+```
 
 ### Per project (`agent-mcp sync`)
 
