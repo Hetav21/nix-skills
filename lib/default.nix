@@ -193,6 +193,10 @@
     mkEnvironment = args: mkEnvironment pkgs args;
   };
 
+  # Renders one canonical `mcpServers` attrset for Claude Code, OpenCode, Codex
+  # and Antigravity (see ./mcp.nix)
+  mcp = import ./mcp.nix {inherit lib;};
+
   # Converts an opencode-style `mcpServers` attrset to Claude Code format
   toClaudeMcpServers = mcpServers: let
     toClaudeServer = server:
