@@ -132,7 +132,7 @@ A local server whose `command` is `npx`, `bunx`, `uvx` or another name in `comma
 | Codex       | `programs.codex.settings.mcp_servers` if that module is enabled, else merged into `~/.codex/config.toml` (`mcp_servers`) |
 | Antigravity | `programs.antigravity-cli.mcpServers` if that module is enabled, else merged into `~/.gemini/config/mcp_config.json` (`mcpServers`, read by both the IDE and `agy`) |
 
-Agents rewrite these files at runtime (Claude Code's state, `codex mcp add`, `agy mcp disable`, trusting a project), so they are never replaced with read-only store symlinks. On activation, `agent-mcp-merge` sets only the declared servers and keeps everything else in the file, including TOML comments. Server names are recorded in `$XDG_STATE_HOME/nix-skills/mcp/<agent>.json`, so a server dropped from `servers` is removed at the next activation, while servers added by hand are kept. A file that can't be parsed is left untouched with a warning.
+Agents rewrite these files at runtime (Claude Code's state, `codex mcp add`, `agy mcp disable`, trusting a project), so they are never replaced with read-only store symlinks. On activation, `agent-mcp-merge` sets only the declared servers and keeps everything else in the file, including TOML comments. Server names are recorded in `$XDG_STATE_HOME/nix-skills/mcp/<agent>.json`, so a server dropped from `servers` is removed at the next activation, while servers added by hand are kept. Turning a target off likewise removes the servers it added from that agent's file. Disabling `programs.agent-mcp` itself leaves them in place, so turn the targets off for one switch first. A file that can't be parsed is left untouched with a warning.
 
 The module also installs the `agent-mcp` CLI.
 
