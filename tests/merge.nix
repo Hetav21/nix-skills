@@ -33,6 +33,13 @@ pkgs.runCommand "agent-mcp-merge-tests" {nativeBuildInputs = [merge pkgs.jq];} '
   grep -q '^\[mcp_servers.new\]$' config.toml
   [ "$(jq -c . state.json)" = '["kept","new"]' ]
 
+  # No servers with state (target turned off): managed servers removed, others kept
+  echo '{"mcpServers": {"mine": {}, "kept": {}}}' > off.json
+  echo '["kept"]' > off-state.json
+  echo '{}' > none.json
+  agent-mcp-merge off.json mcpServers none.json off-state.json
+  [ "$(jq -c .mcpServers off.json)" = '{"mine":{}}' ]
+
   # JSON without state: the key is replaced entirely, other keys kept
   echo '{"model": "x", "mcp": {"old": {}}}' > opencode.json
   chmod 600 opencode.json

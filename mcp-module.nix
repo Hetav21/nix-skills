@@ -31,17 +31,33 @@
   # `codex mcp add`, `agy mcp disable`, ...), so instead of a read-only store
   # symlink the servers are merged into the file on activation. Servers managed
   # by the previous generation but no longer declared are removed; everything
-  # else in the file, including servers added by hand, is kept.
-  mergeStep = name: file: key: servers:
-    lib.hm.dag.entryAfter ["linkGeneration"] ''
-      run ${lib.getExe cli.merge} ${lib.escapeShellArgs [
-        file
-        key
-        (jsonFormat.generate "${name}-mcp-servers.json" servers)
-        "${config.xdg.stateHome}/nix-skills/mcp/${name}.json"
-      ]} \
-        || warnEcho "agent-mcp: could not update the MCP servers in ${file}"
-    '';
+  # else in the file, including servers added by hand, is kept. With the
+  # target off, the servers a previous generation added are removed instead.
+  mergeStep = name: enabled: file: key: let
+    state = "${config.xdg.stateHome}/nix-skills/mcp/${name}.json";
+    merge = servers: "${lib.getExe cli.merge} ${lib.escapeShellArgs [
+      file
+      key
+      (jsonFormat.generate "${name}-mcp-servers.json" servers)
+      state
+    ]}";
+  in
+    lib.hm.dag.entryAfter ["linkGeneration"] (
+      if enabled
+      then ''
+        run ${merge rendered.${name}} \
+          || warnEcho "agent-mcp: could not update the MCP servers in ${file}"
+      ''
+      else ''
+        if [[ -e ${lib.escapeShellArg state} ]]; then
+          if [[ ! -e ${lib.escapeShellArg file} ]] || run ${merge {}}; then
+            run rm ${lib.escapeShellArg state}
+          else
+            warnEcho "agent-mcp: could not remove the MCP servers from ${file}"
+          fi
+        fi
+      ''
+    );
 in {
   options.programs.agent-mcp = {
     enable = lib.mkEnableOption "one MCP server definition shared by every AI agent";
@@ -125,16 +141,16 @@ in {
     home.packages = [cli];
 
     home.activation = {
-      agentMcpClaude = lib.mkIf t.claude (mergeStep "claude" "${home}/.claude.json" "mcpServers" rendered.claude);
+      agentMcpClaude = mergeStep "claude" t.claude "${home}/.claude.json" "mcpServers";
       agentMcpOpencode =
-        lib.mkIf (t.opencode && !viaHm "opencode")
-        (mergeStep "opencode" "${config.xdg.configHome}/opencode/opencode.json" "mcp" rendered.opencode);
+        lib.mkIf (!viaHm "opencode")
+        (mergeStep "opencode" t.opencode "${config.xdg.configHome}/opencode/opencode.json" "mcp");
       agentMcpCodex =
-        lib.mkIf (t.codex && !viaHm "codex")
-        (mergeStep "codex" "${home}/.codex/config.toml" "mcp_servers" rendered.codex);
+        lib.mkIf (!viaHm "codex")
+        (mergeStep "codex" t.codex "${home}/.codex/config.toml" "mcp_servers");
       agentMcpAntigravity =
-        lib.mkIf (t.antigravity && !viaHm "antigravity-cli")
-        (mergeStep "antigravity" "${home}/.gemini/config/mcp_config.json" "mcpServers" rendered.antigravity);
+        lib.mkIf (!viaHm "antigravity-cli")
+        (mergeStep "antigravity" t.antigravity "${home}/.gemini/config/mcp_config.json" "mcpServers");
     };
 
     programs =
