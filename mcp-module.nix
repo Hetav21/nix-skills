@@ -114,7 +114,8 @@ in {
       description = ''
         Executables for bare `command` names: a local server whose `command`
         is a key here runs that executable instead, so agents don't depend on
-        {env}`PATH`. `npx`, `bunx` and `uvx` resolve to nixpkgs by default.
+        {env}`PATH`. `npx`, `bunx` and `uvx` resolve to nixpkgs by default;
+        `npx` also puts its `node` on {env}`PATH` for the packages it runs.
       '';
     };
 
@@ -166,7 +167,7 @@ in {
     programs =
       {
         agent-mcp.commands = lib.mapAttrs (_: lib.mkDefault) {
-          npx = lib.getExe' pkgs.nodejs "npx";
+          npx = lib.getExe (pkgs.callPackage ./pkgs/npx {});
           bunx = lib.getExe' pkgs.bun "bunx";
           uvx = lib.getExe' pkgs.uv "uvx";
         };
