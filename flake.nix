@@ -31,6 +31,10 @@
         inherit lib;
         pkgs = nixpkgs.legacyPackages.${system};
       };
+      npx = import ./tests/npx.nix {
+        pkgs = nixpkgs.legacyPackages.${system};
+        npx = nixpkgs.legacyPackages.${system}.callPackage ./pkgs/npx {};
+      };
     });
   };
 }

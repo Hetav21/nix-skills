@@ -129,7 +129,7 @@ programs.agent-mcp = {
 };
 ```
 
-A local server whose `command` is `npx`, `bunx`, `uvx` or another name in `commands` runs that Nix store executable, so agents started outside a shell don't depend on `PATH`. The same `mcp.json` therefore works unchanged with `agent-mcp sync`, where commands come from the project's `PATH`.
+A local server whose `command` is `npx`, `bunx`, `uvx` or another name in `commands` runs that Nix store executable, so agents started outside a shell don't depend on `PATH`. `npx` also puts its `node` first on `PATH`, since most npm package bins start with `#!/usr/bin/env node`; `bunx` runs them with Bun when there is no `node`. The same `mcp.json` therefore works unchanged with `agent-mcp sync`, where commands come from the project's `PATH`.
 
 | Agent       | Written to                                                                                          |
 | ----------- | --------------------------------------------------------------------------------------------------- |
